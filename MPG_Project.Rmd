@@ -1,0 +1,95 @@
+---
+title: "Automatic or Manual? - Implications for MPG"
+author: "Poul Kristensen"
+date: "October 30, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+Manual transmission is associated with higher MPG than automatic transmission. On average, a car with manual transmission can run almost 3 miles longer per gallon of gas than a car with automatic transmission. This result takes into account the effect of potentially confounding factors, and it is statistically significant at the 5% level. Due to confounding factors, the effect of the choice of transmission on MPG is smaller than a univariate regression would suggest.
+
+### Load packages and data
+```{r cars}
+library(stats)
+library(ggplot2)
+data(mtcars)
+```
+
+### Data Overview and Exploratory View of Correlations
+
+Our target variable is mpg, miles per gallon, an important performance indicator for cars. We want to investigate whether automatic transmission or manual transmission is the best solution for achieving the highest mpg.  The dataset contains 11 variables, including mpg. The feature am is a binary variable for transmission, with am = 0 for automatic and am = 1 for manual transmission. 
+
+We can study the correlations among the independent variables using the plot command:
+
+```{r p, echo=TRUE}
+plot(mtcars)
+```
+
+Several of the independent variables are clearly correlated, e.g. wt (weight) is correlated with disp (displacement) and hp (horsepower). Likewise, hp is correlated with disp.  It may be that these variables are all proxies for the same underlying feature: Size/power of the engine. We will revisit this discussion in the multivariate analysis below.
+
+### Simple univariate regression
+
+A simple linear regression of mpg on am will give us a first indication of the effect of transmission on mpg: 
+
+```{r uni, echo=TRUE}
+model1 <- lm(mpg ~ am, data = mtcars)
+summary(model1)
+```
+
+The coefficient to the am binary variable is 7.25, with a standard error of 1.76. In other words, it appears that cars with manual transmission (when am = 1), on average, have mpg that are 7.25 higher than the average automatic transmission (when am = 0) car. The difference is 7.25 / 1.76 = 4.106 standard deviations and thus clearly statistically significant. With a p-value of 0.000285, results indicate that the difference is so large that we can conclude it is highly unlikely to be due to just random chance in the sample. We thus reject the null hypothesis of no relationship between mpg and am.
+
+### Multivariate regression
+
+Analyzing the relationship between mpg and am in a univariate regression is a reasonable first take. However, in order to assess the robustness of the result, a multivariate regression, which controls ("holds constant") a number of other factors, is a good idea, as this could help assess whether the observed correlation between mpg and am is really driven by other factors (confounding variables) with which mpg and am both correlate.
+
+The multivariate regression is performed using all the features available in the mtcars dataframe:
+
+```{r multi, echo=TRUE}
+model2 <- lm(mpg ~ ., data = mtcars)
+summary(model2)
+```
+
+
+
+
+With all the features included, the relationships looks different. In fact, the relationship between mpg and am is not as strong. Based on this output alone, we would accept the null hypothesis that mpg and am are in fact unlelated, as a coefficient of 2.52 is only 1.225 standard deviations above zero, and the p-value at 0.234 indicates that this might in fact be due to sampling variation. 
+
+However, high correlations among several of the independent variables might be driving up the variance of the parameter estimates, thus undermining our ability to get a precise reading of the coefficients.
+
+### Variable selection through stepwise regression
+
+We can select regressors using the step function, which performs stepwise regressions, and eliminates regressors, or adds back regressors, and reestimates the regression with regressors added or deleted, aiming to select the formulation minimizing the Akaike Information Criterion (AIC), which is a performance measure that rewards goodness of fit, but also penalizes model complexity. 
+
+```{r sel, echo=TRUE}
+step(model2, trace = FALSE)
+```
+
+The stepwise model selection procedure ended up eliminating 7 features, leaving us with 3 independent variables: wt (weight), qsec (1/4 mile time) and am.  Intuitively, the redundant information present in the highly correlated variables has now been filtered out, and only the wt variable is left to represent the size of the engine, with the qsec variable perhaps representing the power of the engine. 
+
+### Re-assessing the relationship between MPG and transmission
+
+We can get the coefficients from the new, 3-variable regression by running the lm function:
+
+``` {r new3, echo = TRUE}
+new <- lm(formula = mpg ~ wt + qsec + am, data = mtcars)
+summary(new)
+```
+
+The coefficient to the am variable is now 2.94, which is 2.08 standard deviations above zero. With a p-value of 0.047, we conclude that manual transmission (am = 1) is associated with higher MPG, on average 2.94 miles per gallon, when compared to automatic transmission (am = 0). This result controls for potentially confounding factors by including qsec and wt as regressors and is therefore more robust than the initial result from the univariate regression.
+
+The fact that the univariate regression found a larger distance between the MPGs of automatic and manual transmission likely reflects the interaction between the choice of transmission and engine size and speed for specific car models. This interaction is thus a confounding factor relationship that causes the univariate regression to overestimate the effect of transmission on MPG.
+
+### Residual plot and diagnostics
+
+The Q-Q plot does not indicate severe departure from the Gaussian assumption. The plot of residuals versus fitted values does not indicate heteroskedasticity or non-linearities. We find that these residual diagnostics do not invalidate our findings.  
+
+```{r residplot, echo=TRUE}
+plot(new)
+```
+
+
