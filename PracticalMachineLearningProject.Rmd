@@ -1,0 +1,105 @@
+---
+title: "Predicting the Rating of Dumbbell Exercises"
+author: "Poul Kristensen"
+date: "November 1, 2018"
+output: html_document
+---
+
+
+```{r setup1, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+ 
+## Executive Summary
+
+We train a Random Forest model on a dataset containing features describing the detailed manner in which participants performed a dumbbell exercise. The aim was to predict how each lift was classified on a scale (A, B, C, D or E) in which A corresponded to the proper execution of the exercise, while B - E represented the most common mistakes.  We find that a Random Forest model can predict, with high accuracy, the rating (i.e. whether execution was correct and/or, if not, which type of mistake occurred). Evaluating the model using cross-valuation, we estimate an out-of-bag error of only 0.13%, indicating a high classification accuracy based on these features. Finally, we use the model to generate predictions for the 20 test cases. 
+
+### Background
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). The purpose of our model is to evaluate whether the classification can be predicted using a large number of measurements on the specific movements that took place during the execution of the exercise. 
+
+For more information on the dataset, see http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har.
+
+### Ingesting and Preparing the Data
+
+First step is to ingest the Human Activity Recognition (HAR) exercise data. We do this while converting empty cells as well as "#DIV/0!" occurrences to NAs.
+
+``` {r ingest, include=TRUE}
+training <- read.csv("S:/Economics/Poul/Data Science Coursera/pml-training.csv", na.strings = c("NA","","#DIV/0!"))
+testing <- read.csv("S:/Economics/Poul/Data Science Coursera/pml-testing.csv", na.strings = c("NA","","#DIV/0!"))
+
+dim(training)
+```
+
+The dataset contains 160 variables. Some of the features are non-numerical and/or not meaningful as predictors. We eliminate user_name and timestamp variables from the feature list. The features named ampliture_yaw_forearm and kurtosis_yaw_forearm contain no information. In addition, the feature X appears to be a serial number, and the feature new_window is always "yes". We therefore remove these features. After that, we eliminate features where more than 5% of observations are missing. We also use the nearZeroVar() function to eliminate any other variables with just one, or very few, unique value(s) relative to the number of observations.
+
+``` {r elim}
+eliminate <- c("user_name", "X", "new_window","amplitude_yaw_forearm","kurtosis_yaw_forearm", "cvtd_timestamp")
+
+#Remove columns with names including 'timestamp'
+eliminate <- c(eliminate, names(training)[grep("timestamp",names(training))])
+training <- training[,!names(training) %in% eliminate]
+
+#Remove columns with more than 5% of values missing
+training <- training[,!colSums(is.na(training)) > .05 * nrow(training)]
+
+#Testing dataset is to contain the same columns as training set:
+testing <- testing[, names(testing) %in% names(training)]
+dim(training)
+dim(testing)
+```
+
+We now have 54 variables. The target variable is classe. It is a categorical (factor) variable
+taking values from A to E:
+
+```{r classe}
+table(training$classe)
+```
+
+With 53 features for the purpose of predicting a categorical variable, i.e. which of the 5 Classes of exercises the measurements belong to, a natural modeling technique to use as a starting point is the Random Forest classifier. Due to its bootstrap aggregation ("bagging") approach, a Random Forest is less sensitive to noisy feature data, and it is less prone to overfitting than are many other methods. We will use the caret package. 
+
+
+```{r setup}
+library(caret)
+```
+
+
+###Random Forest Prediction of Weight Lift Execution
+
+In order to evaluate the robustness of the predictions, we will use cross-validation, partioning the dataset into 3 folds using the trainControl function.  We also set the random number seed to make the results reproducible.
+
+``` {r cv}
+set.seed(917)
+CV <- trainControl(method="cv", number=3, verboseIter=FALSE)
+
+```
+
+We can now train the Random Forest classifier and perform cross-validation:
+
+``` {r fit1}
+Fitrf <- train(classe ~ ., data = training, method = "rf", trControl = CV)
+Fitrf
+```
+
+Using 3-fold cross-validation for tuning, the optimal value of the hyperparameter, mtry, the number of randomly selected features for each tree in the Random Forest, is 27, i.e. in this case half of the full set of predictors. Classification accuracy was high: In cross-validation, 99.75% of the barbell lift execution classes were predicted by the 53 features.
+
+### Test Case Predictions from Random Forest
+
+Next, we will use the Random Forest model to predict the 20 test cases:
+
+``` {r predictRF}
+pred_rf <- predict(Fitrf, testing)
+pred_rf
+
+```
+
+###Assessing Out-of-bag (OOB) Prediction Error
+
+Using 3-fold cross-validation, we can estimate the likely out-of-bag (OOB) error rate by iteratively training the model on 2 of the training folds (subsamples), and then evaluating the prediction on the 3rd subsample.   The caret train function generates the result of such an exercise.
+
+``` {r OOBoutput}
+Fitrf$finalModel
+```
+
+With this very rich set of features describing aspects of how each partipant lifted the dumbbell, the classification error is very low: The cross-validation experiment estimated the OOB prediction error at 0.13%, so it appears we have a high rate of accuracy with this model.
+
